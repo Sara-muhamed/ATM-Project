@@ -1,0 +1,35 @@
+{
+    "accounts": [
+        {
+            "account_number": "123456",
+            "pin": "0000",
+            "balance": 1000.0,
+            "statements": [
+                "2025-08-17 12:14:45 - Withdrawal: $1000.00",
+                "2025-08-17 12:15:01 - Deposit: $1000.00"
+            ],
+            "attempts_left": 3
+        },
+        {
+            "account_number": "789101",
+            "pin": "2222",
+            "balance": 500.0,
+            "statements": [],
+            "attempts_left": 3
+        },
+        {
+            "account_number": "555888",
+            "pin": "3333",
+            "balance": 2000.0,
+            "statements": [],
+            "attempts_left": 3
+        },
+        {
+            "account_number": "999000",
+            "pin": "4444",
+            "balance": 750.0,
+            "statements": [],
+            "attempts_left": 3
+        }
+    ]
+}

@@ -1,22 +1,13 @@
 import streamlit as st
-from Login import *
+from Login import ATM_User
+import data
 
 
 st.set_page_config(page_title="ATM Machine", layout="centered")
 
-# ---------- ATM Session Handling ----------
-def load_atm():
-    if "atm_data" not in st.session_state:
-        st.session_state["atm_data"] = ATM_clear().to_dict()
-    return ATM_clear.from_dict(st.session_state["atm_data"]) 
-
-def save_atm(atm: ATM_clear):
-    st.session_state.atm_data = atm.to_dict()
-
 # ---------- Custom CSS ----------
 st.markdown("""
     <style>
-    /* 🔘 Buttons */
     .stButton>button {
         font-size:18px;
         padding:12px 20px;
@@ -35,8 +26,6 @@ st.markdown("""
         transform:scale(1.03);
         box-shadow: 0 6px 8px rgba(0,0,0,0.3);
     }
-
-    /* ✏️ Input fields */
     input {
         font-size:18px !important;
         text-align:center;
@@ -52,26 +41,26 @@ st.markdown("""
         box-shadow:0 0 8px #2b5876;
         background-color:#f9f9ff;
     }
-
-    /* 💵 Number input (amount fields) */
     input[type="number"] {
         font-size:20px !important;
         font-weight:600;
         color:#2b5876;
         background-color:#eef2f7;
     }
-
-    
-    /* 🔐 PIN input (password style) */
     input[type="password"] {
-    font-size:22px !important;
-    letter-spacing:6px;
-    color:#000000 !important;   
-    background-color:#ffffff !important; 
+        font-size:22px !important;
+        letter-spacing:6px;
+        color:#000000 !important;   
+        background-color:#ffffff !important; 
     }
+            input[type="text"] {
+    font-size: 20px !important;
+    font-weight: 600;
+    color: #2b5876 !important;  
+    background-color: #eef2f7 !important;  
+}
 
-
-    /* 🏧 Subheaders */
+         
     .stMarkdown h2, .stMarkdown h3 {
         color:#2b5876;
         font-weight:700;
@@ -79,6 +68,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+
+# ---------- ATM Session Handling ----------
+def load_atm():
+    if "atm_data" not in st.session_state:
+        st.session_state["atm_data"] = data.load_atm_data()
+    return ATM_User.from_dict(st.session_state["atm_data"]) 
+
+def save_atm(atm: ATM_User):
+    st.session_state["atm_data"] = atm.to_dict()
+    data.save_atm_data(st.session_state["atm_data"])
 
 
 # ---------- Main ----------
@@ -99,30 +98,32 @@ def main():
     elif screen == "login":
         st.subheader("🔑 Login")
         
-        
-        
+        account_number = st.text_input("Enter Account Number:", max_chars=6, key="account_number_input")
         pin = st.text_input("Enter PIN:", type="password", max_chars=4, key="pin_input")
+
         if st.button("Login"):
-                ok, msg = atm.login(pin)
-                save_atm(atm)
-                if ok:
-                    st.session_state.screen = "menu"
-                    st.success("✅ Login successful!")
+            ok, msg = atm.login(account_number, pin)
+            save_atm(atm)
+            if ok:
+                st.session_state.account_number = account_number
+                st.session_state.screen = "menu"
+                st.success("✅ Login successful!")
+                st.rerun()
+            else:
+                st.error(msg)
+                account = atm.get_account(account_number)
+                if account and account["attempts_left"] <= 0:
+                    st.session_state.screen = "block"
                     st.rerun()
-                else:
-                    st.error(msg)
-                    if atm.attempts_left <= 0:
-                        st.session_state.screen = "block"
-                        st.rerun()
                     
+    # ---------- Blocked ----------
     elif screen == "block":
         st.subheader("❌ Account Locked")
-        st.error("Too many failed attempts. Please reset your ATM.")
-        if st.button("Reset ATM"):
-            atm.reset()
-            save_atm(atm)
+        st.error("Too many failed attempts. Please contact support.")
+        if st.button("⬅️ Back to Welcome"):
             st.session_state.screen = "welcome"
             st.rerun()
+
     # ---------- Menu ----------
     elif screen == "menu":
         st.subheader("📋 Main Menu")
@@ -154,12 +155,14 @@ def main():
     # ---------- Withdraw ----------
     elif screen == "withdraw":
         st.subheader("💵 Withdraw Money")
-        if atm.balance <= 0:
+        account = atm.get_account(st.session_state.account_number)
+        
+        if account["balance"] <= 0:
             st.error("Your balance is zero. Please deposit money first.")
         else:    
-            amount = st.number_input("Enter amount:", min_value=1)
+            amount = st.number_input("Enter amount:")
             if st.button("Confirm Withdrawal"):
-                ok, msg = atm.withdraw(amount)
+                ok, msg = atm.withdraw(account["account_number"], amount)
                 save_atm(atm)
                 if ok:
                     st.success(msg)
@@ -172,17 +175,15 @@ def main():
     # ---------- Deposit ----------
     elif screen == "deposit":
         st.subheader("💰 Deposit Money")
-        amount = st.number_input("Enter amount:", key="deposit_amount")
-        if st.button("Confirm Deposit") :
-            ok, msg = atm.deposit(amount)
+        account = atm.get_account(st.session_state.account_number)
+        amount = st.number_input("Enter amount:", key="deposit_amount", min_value=1)
+        if st.button("Confirm Deposit"):
+            ok, msg = atm.deposit(account["account_number"], amount)
             save_atm(atm)
             if ok:
                 st.success(msg)
-                 # Reset amount input after successful deposit
             else:
                 st.error(msg)
-                  # Reset amount input on error
-        amount = None
         if st.button("⬅️ Back to Menu"):
             st.session_state.screen = "menu"
             st.rerun()
@@ -190,7 +191,8 @@ def main():
     # ---------- Balance ----------
     elif screen == "balance":
         st.subheader("📊 Your Balance")
-        st.info(f"💲 Current Balance: {atm.balance}")
+        account = atm.get_account(st.session_state.account_number)
+        st.info(f"💲 Current Balance: {account['balance']}")
         if st.button("⬅️ Back to Menu"):
             st.session_state.screen = "menu"
             st.rerun()
@@ -199,11 +201,12 @@ def main():
     elif screen == "change_pin":
         st.subheader("🔐 Change PIN")
         old_pin = st.text_input("Enter Old PIN:", type="password")
-        new_pin = st.text_input("Enter New PIN (4 digits):", max_chars=4,type="password").strip()
-        confirm_pin = st.text_input("Confirm New PIN:", max_chars=4,type="password").strip()
+        new_pin = st.text_input("Enter New PIN (4 digits):", max_chars=4, type="password").strip()
+        confirm_pin = st.text_input("Confirm New PIN:", max_chars=4, type="password").strip()
 
         if st.button("Confirm Change"):
-            ok, msg = atm.change_pin(old_pin, new_pin, confirm_pin)
+            account = atm.get_account(st.session_state.account_number)
+            ok, msg = atm.change_pin(account["account_number"], old_pin, new_pin, confirm_pin)
             save_atm(atm)
             if ok:
                 st.success(msg)
@@ -216,14 +219,16 @@ def main():
     # ---------- Mini Statement ----------
     elif screen == "mini_statement":
         st.subheader("🧾 Mini Statement")
-        if atm.statements:
-            for s in atm.statements:
+        account = atm.get_account(st.session_state.account_number)
+        if account["statements"]:
+            for s in account["statements"]:
                 st.write(f"- {s}")
         else:
             st.info("No transactions yet.")
         if st.button("⬅️ Back to Menu"):
             st.session_state.screen = "menu"
             st.rerun()
+
 
 # Run App
 if __name__ == "__main__":
